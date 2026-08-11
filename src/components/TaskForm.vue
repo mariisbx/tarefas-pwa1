@@ -8,7 +8,7 @@
         class="task-input"
       />
       <button type="submit" class="task-button" :disabled="uploading">
-        {{ editingTask ? 'Alterar' : 'Adicionar' }}
+        {{ editingTask ? "Alterar" : "Adicionar" }}
       </button>
       <button
         v-if="editingTask"
@@ -20,98 +20,134 @@
       </button>
     </div>
 
-    <div v-if="editingTask" class="image-section">
+    <div class="image-section">
+      <!-- Preview da imagem já salva ou capturada -->
       <img
-        v-if="previewUrl || editingTask.img_url"
-        :src="previewUrl || editingTask.img_url"
+        v-if="previewUrl || editingTask?.img_url"
+        :src="previewUrl || editingTask?.img_url"
         class="image-preview"
         alt="Imagem da tarefa"
       />
+
+      <!-- Input com capture (padrão) -->
       <label class="image-label" :class="{ disabled: uploading }">
         <span v-if="uploading" class="upload-status">Enviando...</span>
-        <span v-else>
-          {{ previewUrl || editingTask.img_url
-            ? 'Trocar imagem'
-            : 'Adicionar imagem'
-          }}
-        </span>
+        <span v-else>Adicionar imagem</span>
         <input
           type="file"
           accept="image/jpeg,image/png"
+          capture="environment"
           class="image-input"
           :disabled="uploading"
           @change="handleImageChange"
         />
       </label>
+
+      <!-- Alternativa com preview ao vivo -->
+      <button
+        type="button"
+        class="task-button-secondary"
+        @click="showCameraCapture = !showCameraCapture"
+      >
+        {{ showCameraCapture ? "Fechar câmera" : "Abrir preview ao vivo" }}
+      </button>
+
+      <CameraCapture v-if="showCameraCapture" @captured="handleCameraCapture" />
     </div>
   </form>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
-import tasksApi from '../api/tasksApi.js'
+import { ref, watch } from "vue";
+import tasksApi from "../api/tasksApi.js";
+
+import CameraCapture from './CameraCapture.vue'
+const showCameraCapture = ref(false)
+
+function handleCameraCapture(file) {
+  previewUrl.value = URL.createObjectURL(file);
+  uploading.value = true;
+  tasksApi
+    .uploadImage(file)
+    .then((response) => {
+      imgAttachmentKey.value = response.data.attachment_key;
+    })
+    .catch((err) => {
+      console.error(err);
+      previewUrl.value = null;
+    })
+    .finally(() => {
+      uploading.value = false;
+    });
+}
 
 const props = defineProps({
   editingTask: {
     type: Object,
     default: null,
   },
-})
+});
 
-const emit = defineEmits(['add', 'update', 'cancel'])
-const newTask = ref('')
-const previewUrl = ref(null)
-const imgAttachmentKey = ref(null)
-const uploading = ref(false)
+const emit = defineEmits(["add", "update", "cancel"]);
+const newTask = ref("");
+const previewUrl = ref(null);
+const imgAttachmentKey = ref(null);
+const uploading = ref(false);
 
 watch(
   () => props.editingTask,
   (task) => {
-    newTask.value = task ? task.title : ''
-    previewUrl.value = null
-    imgAttachmentKey.value = null
+    newTask.value = task ? task.title : "";
+    if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+    previewUrl.value = null;
+    imgAttachmentKey.value = null;
   },
-)
-
+);
+  
 async function handleImageChange(event) {
-  const file = event.target.files[0]
-  if (!file) return
-  previewUrl.value = URL.createObjectURL(file)
-  uploading.value = true
+  const file = event.target.files[0];
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+  if (!file) return;
+  previewUrl.value = URL.createObjectURL(file);
+  uploading.value = true;
   try {
-    const response = await tasksApi.uploadImage(file)
-    imgAttachmentKey.value = response.data.attachment_key
+    const response = await tasksApi.uploadImage(file);
+    imgAttachmentKey.value = response.data.attachment_key;
   } catch (err) {
-    console.error('Erro ao fazer upload da imagem', err)
-    previewUrl.value = null
-    imgAttachmentKey.value = null
+    console.error("Erro ao fazer upload da imagem", err);
+    previewUrl.value = null;
+    imgAttachmentKey.value = null;
   } finally {
-    uploading.value = false
+    uploading.value = false;
   }
 }
 
 function handleSubmit() {
-  if (!newTask.value.trim()) return
+  if (!newTask.value.trim()) return;
+
+  const payload = {
+    title: newTask.value.trim(),
+    img_attachment_key: imgAttachmentKey.value,
+  };
+
   if (props.editingTask) {
-    emit(
-      'update',
-      props.editingTask.id,
-      newTask.value.trim(),
-      imgAttachmentKey.value
-    )
+    emit("update", props.editingTask.id, payload);
   } else {
-    emit( 'add', newTask.value.trim() )
+    emit("add", payload);
   }
-  newTask.value = ''
-  previewUrl.value = null
-  imgAttachmentKey.value = null
+
+  newTask.value = "";
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+  previewUrl.value = null;
+  imgAttachmentKey.value = null;
 }
 
 function handleCancel() {
-  newTask.value = ''
-  previewUrl.value = null
-  imgAttachmentKey.value = null
-  emit('cancel')
+  newTask.value = "";
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+  previewUrl.value = null;
+  imgAttachmentKey.value = null;
+  emit("cancel");
 }
 </script>
 
@@ -223,5 +259,11 @@ function handleCancel() {
 
 .upload-status {
   color: #888;
+}
+.image-help {
+  font-size: 0.75rem;
+  color: #999;
+  margin: 0;
+  flex-basis: 100%;
 }
 </style>
